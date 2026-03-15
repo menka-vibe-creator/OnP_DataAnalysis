@@ -20,6 +20,7 @@ uv.lock
 # Data and reports (adjust if you want to track these)
 data/*
 !data/.gitkeep
+!data/op_claims_data.csv
 reports/*
 !reports/.gitkeep
 
