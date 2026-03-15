@@ -1,0 +1,20 @@
+{
+  "_comment": "External MCP server definitions loaded by agent.py at startup.",
+  "_comment2": "Add entries under 'servers'. Each key becomes the server alias.",
+  "_comment3": "Use env vars (set in .env.local) for credentials — never hardcode them here.",
+  "servers": {
+    "_example_postgres": {
+      "_disabled": true,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    },
+    "_example_filesystem": {
+      "_disabled": true,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+    }
+  }
+}

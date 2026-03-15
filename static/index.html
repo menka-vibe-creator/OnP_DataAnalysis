@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSV Analyst Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    /* Excel table preview */
+    #excel-table-wrap table { border-collapse: collapse; font-size: 0.72rem; min-width: 100%; }
+    #excel-table-wrap td, #excel-table-wrap th { border: 1px solid #e2e8f0; padding: 3px 10px; white-space: nowrap; }
+    #excel-table-wrap tr:first-child td, #excel-table-wrap th { background: #2E75B6; color: #fff; font-weight: 600; }
+    #excel-table-wrap tr:nth-child(even) td { background: #f0f4fb; }
+
+    /* Markdown result */
+    #result-content h1 { font-size: 1.4rem; font-weight: 700; margin: .75rem 0 .25rem; }
+    #result-content h2 { font-size: 1.15rem; font-weight: 700; margin: .65rem 0 .2rem; }
+    #result-content h3 { font-size: 1rem; font-weight: 600; margin: .5rem 0 .15rem; }
+    #result-content p  { margin: .4rem 0; line-height: 1.65; }
+    #result-content ul { list-style: disc; padding-left: 1.5rem; margin: .3rem 0; }
+    #result-content ol { list-style: decimal; padding-left: 1.5rem; margin: .3rem 0; }
+    #result-content li { margin: .15rem 0; }
+    #result-content code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: .85em; }
+    #result-content pre  { background: #f1f5f9; padding: .75rem; border-radius: 6px; overflow-x: auto; margin: .5rem 0; }
+    #result-content table { border-collapse: collapse; margin: .5rem 0; font-size: .85rem; width: 100%; }
+    #result-content table th { background: #2E75B6; color: #fff; padding: 4px 10px; text-align: left; }
+    #result-content table td { border: 1px solid #e2e8f0; padding: 3px 10px; }
+    #result-content strong { font-weight: 700; }
+    #result-content hr { border: none; border-top: 1px solid #e2e8f0; margin: .75rem 0; }
+
+    /* Observability step colors */
+    .step-blue   { border-color: #3b82f6; }
+    .step-violet { border-color: #8b5cf6; }
+    .step-emerald{ border-color: #10b981; }
+    .step-amber  { border-color: #f59e0b; }
+    .step-teal   { border-color: #14b8a6; }
+    .step-gray   { border-color: #9ca3af; }
+
+    .badge-blue   { background:#eff6ff; color:#1d4ed8; }
+    .badge-violet { background:#f5f3ff; color:#6d28d9; }
+    .badge-emerald{ background:#ecfdf5; color:#065f46; }
+    .badge-amber  { background:#fffbeb; color:#92400e; }
+    .badge-teal   { background:#f0fdfa; color:#0f766e; }
+    .badge-gray   { background:#f9fafb; color:#374151; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+
+  <!-- Header -->
+  <header class="bg-blue-700 text-white shadow-md">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
+      <svg class="w-7 h-7 text-blue-200" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6M4 20h16a2 2 0 002-2V6a2 2 0 00-2-2H8l-4 4v10a2 2 0 002 2z"/>
+      </svg>
+      <div>
+        <h1 class="text-xl font-bold leading-tight">CSV Analyst Agent</h1>
+        <p class="text-blue-200 text-xs">Powered by Claude Agent SDK</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+
+    <!-- Form card -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-base font-semibold text-slate-700 mb-4">New Analysis</h2>
+      <form id="analyse-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">Prompt</label>
+          <textarea id="prompt" rows="3"
+            placeholder="e.g. Summarise key trends and highlight top-performing regions… (leave blank to auto-summarise)"
+            class="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none resize-none"></textarea>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-slate-600">
+            Data File <span class="text-slate-400 font-normal">(optional)</span>
+          </label>
+
+          <!-- Existing files dropdown -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Select an existing file</label>
+            <select id="data-path"
+              class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-blue-400 focus:outline-none bg-white">
+              <option value="">— none —</option>
+            </select>
+          </div>
+
+          <!-- Divider -->
+          <div class="flex items-center gap-2">
+            <div class="flex-1 border-t border-slate-200"></div>
+            <span class="text-xs text-slate-400">or upload a new file</span>
+            <div class="flex-1 border-t border-slate-200"></div>
+          </div>
+
+          <!-- Upload input -->
+          <input type="file" id="file" accept=".csv,.xlsx,.xls"
+            class="block w-full text-sm text-slate-500
+              file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0
+              file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+          <p class="text-xs text-slate-400">Uploaded file takes priority over the dropdown above.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button type="submit" id="submit-btn"
+            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium py-2 px-6 rounded-xl transition">
+            <svg id="spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <span id="btn-text">Analyse</span>
+          </button>
+          <p id="running-hint" class="hidden text-sm text-slate-400">This may take up to a minute…</p>
+        </div>
+      </form>
+    </div>
+
+    <!-- Error alert -->
+    <div id="error-box" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4 text-sm flex items-start gap-2">
+      <svg class="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+      </svg>
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Results section -->
+    <div id="results-section" class="hidden space-y-6">
+
+      <!-- Analysis result card -->
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-base font-semibold text-slate-700 mb-4">Analysis Result</h2>
+        <div id="result-content" class="text-sm text-slate-700 leading-relaxed"></div>
+      </div>
+
+      <!-- Generated files card -->
+      <div id="files-section" class="hidden bg-white rounded-2xl shadow p-6">
+        <h2 class="text-base font-semibold text-slate-700 mb-4">Generated Files</h2>
+        <div id="files-list" class="space-y-3"></div>
+      </div>
+
+      <!-- Observability panel -->
+      <div id="obs-section" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+        <button id="obs-toggle"
+          class="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition"
+          aria-expanded="false">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <span class="text-base font-semibold text-slate-700">How this report was generated</span>
+            <span id="obs-step-count" class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium"></span>
+          </div>
+          <svg id="obs-chevron" class="w-5 h-5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <div id="obs-body" class="hidden border-t border-slate-100">
+          <div class="px-6 py-4">
+            <p class="text-xs text-slate-400 mb-5">
+              Each step below represents a key operation the AI agent performed to produce this report.
+            </p>
+            <ol id="obs-steps" class="space-y-4"></ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Excel viewer card -->
+      <div id="excel-section" class="hidden bg-white rounded-2xl shadow p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold text-slate-700">Excel Preview</h2>
+          <p class="text-xs text-slate-400">Data sheet capped at 500 rows</p>
+        </div>
+        <div id="sheet-tabs" class="flex gap-2 flex-wrap mb-4"></div>
+        <div id="excel-table-wrap" class="overflow-auto max-h-[420px] border border-slate-200 rounded-xl"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    let _workbook = null;
+
+    // =========================================================================
+    // Populate existing-files dropdown on page load
+    // =========================================================================
+    async function loadDataFiles() {
+      try {
+        const res   = await fetch('/data-files');
+        const data  = await res.json();
+        const sel   = document.getElementById('data-path');
+        const saved = localStorage.getItem('csv_agent_data_path') || '';
+
+        data.files.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value       = f.path;
+          opt.textContent = f.name;
+          if (f.path === saved) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      } catch (_) { /* server not ready yet — silently skip */ }
+    }
+    loadDataFiles();
+
+    document.getElementById('data-path').addEventListener('change', (e) => {
+      localStorage.setItem('csv_agent_data_path', e.target.value);
+    });
+
+    // =========================================================================
+    // Prompt persistence via localStorage
+    // =========================================================================
+    const PROMPT_KEY = 'csv_agent_last_prompt';
+    const promptEl   = document.getElementById('prompt');
+
+    // Restore last prompt on page load
+    const savedPrompt = localStorage.getItem(PROMPT_KEY);
+    if (savedPrompt) promptEl.value = savedPrompt;
+
+    // Save on every change
+    promptEl.addEventListener('input', () => {
+      localStorage.setItem(PROMPT_KEY, promptEl.value);
+    });
+
+    // =========================================================================
+    // Form submit
+    // =========================================================================
+    document.getElementById('analyse-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Use typed prompt or fall back to a default if left blank
+      const DEFAULT_PROMPT = `Perform a comprehensive analysis of this dataset and produce the following outputs:
+
+1. Data quality check — flag missing values, duplicates, and outliers.
+2. Statistical summary — describe all numeric columns (mean, median, std, min/max, percentiles).
+3. Trend analysis — identify patterns over time if a date or period column exists.
+4. Dimensional breakdowns — compute totals, averages, and counts grouped by every relevant categorical column (e.g. region, category, product, clinic, status). Highlight top and bottom performers.
+5. Cross-dimensional analysis — run region × category (or equivalent) breakdowns using SQL queries via the sqlite tool.
+6. Visualisations — generate at least 5 charts using matplotlib and seaborn (bar charts for category breakdowns, line charts for time trends, heatmaps or grouped bars for cross-dimensional views). Save charts as PNG files under reports/charts/.
+7. Excel workbook — build a multi-sheet .xlsx file using xlsxwriter with: a raw Data sheet, a Summary Statistics sheet, one sheet per major dimension, and all charts embedded in the relevant sheets. Save to reports/.
+8. Markdown report — write a detailed report to reports/ with concrete numbers, percentage contributions, key findings (at least 5 bullet points), and actionable recommendations.`;
+      const prompt    = (document.getElementById('prompt').value.trim()) || DEFAULT_PROMPT;
+      const fileInput = document.getElementById('file');
+      const file      = fileInput.files[0];
+      const dataPath  = document.getElementById('data-path').value;
+
+      const btn     = document.getElementById('submit-btn');
+      const spinner = document.getElementById('spinner');
+      const btnText = document.getElementById('btn-text');
+      const hint    = document.getElementById('running-hint');
+
+      // Reset
+      setHidden('error-box', true);
+      setHidden('results-section', true);
+      setHidden('excel-section', true);
+      setHidden('files-section', true);
+      setHidden('obs-section', true);
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+      btnText.textContent = 'Analysing…';
+      hint.classList.remove('hidden');
+
+      try {
+        const fd = new FormData();
+        fd.append('prompt', prompt);
+        if (file)     fd.append('file', file);
+        if (dataPath) fd.append('data_path', dataPath);
+
+        const res  = await fetch('/analyse', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.detail || `Server error ${res.status}`);
+
+        // Render markdown result
+        document.getElementById('result-content').innerHTML = marked.parse(data.result);
+        setHidden('results-section', false);
+
+        // Generated files panel
+        if (data.generated_files?.length) {
+          renderFiles(data.generated_files);
+          setHidden('files-section', false);
+        }
+
+        // Observability panel
+        if (data.steps?.length) {
+          renderSteps(data.steps);
+          setHidden('obs-section', false);
+        }
+
+        // Excel preview
+        if (data.excel_url) {
+          await loadExcel(data.excel_url);
+        }
+
+      } catch (err) {
+        document.getElementById('error-text').textContent = err.message;
+        setHidden('error-box', false);
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+        btnText.textContent = 'Analyse';
+        hint.classList.add('hidden');
+      }
+    });
+
+    // =========================================================================
+    // Generated files panel
+    // =========================================================================
+    function renderFiles(files) {
+      const list = document.getElementById('files-list');
+      list.innerHTML = '';
+
+      files.forEach(f => {
+        const isExcel    = f.type === 'excel';
+        const isMarkdown = f.type === 'markdown';
+        const isImage    = f.type === 'image';
+        const icon       = isExcel ? '📊' : isImage ? '🖼️' : '📄';
+        const typeLabel  = isExcel ? 'Excel Workbook — click to download'
+                         : isImage ? 'Chart image — click to view'
+                         : 'Markdown Report — click to open in browser';
+
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200';
+
+        row.innerHTML = `
+          <span class="text-2xl">${icon}</span>
+          <div class="flex-1 min-w-0">
+            <a href="${f.url}" ${isExcel ? 'download' : 'target="_blank" rel="noopener"'}
+              class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline truncate block">
+              ${f.name}
+            </a>
+            <p class="text-xs text-slate-400">${typeLabel}</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            ${isMarkdown ? `
+              <a href="${f.url}" target="_blank"
+                class="inline-flex items-center gap-1 text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                View
+              </a>` : ''}
+            ${isExcel ? `
+              <a href="${f.url}" download
+                class="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Download
+              </a>` : ''}
+            <button onclick="openFile('${f.url}', 'open')"
+              class="inline-flex items-center gap-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              Open
+            </button>
+            <button onclick="openFile('${f.url}', 'reveal')"
+              class="inline-flex items-center gap-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              Show in Finder
+            </button>
+          </div>`;
+
+        list.appendChild(row);
+      });
+    }
+
+    async function openFile(url, action) {
+      try {
+        await fetch('/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: url, action }),
+        });
+      } catch (_) { /* ignore */ }
+    }
+
+    // =========================================================================
+    // Observability panel
+    // =========================================================================
+    const CATEGORY_LABELS = {
+      data_access: 'Data Access',
+      analysis:    'Analysis',
+      aggregation: 'Aggregation',
+      database:    'Database',
+      output:      'Output',
+    };
+
+    function renderSteps(steps) {
+      const ol    = document.getElementById('obs-steps');
+      const count = document.getElementById('obs-step-count');
+      ol.innerHTML = '';
+      count.textContent = `${steps.length} step${steps.length !== 1 ? 's' : ''}`;
+
+      steps.forEach(s => {
+        const durationStr = s.duration_ms < 1000
+          ? `${s.duration_ms} ms`
+          : `${(s.duration_ms / 1000).toFixed(1)} s`;
+
+        const catLabel = CATEGORY_LABELS[s.icon ? Object.keys(CATEGORY_LABELS).find(k =>
+          s.title.toLowerCase().includes(k.replace('_', ' '))) : ''] ||
+          s.title.split(':')[0];
+
+        const li = document.createElement('li');
+        li.className = `flex gap-4`;
+        li.innerHTML = `
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-base shrink-0 mt-0.5">
+              ${s.icon}
+            </div>
+            <div class="w-0.5 bg-slate-200 flex-1 my-1"></div>
+          </div>
+          <div class="pb-4 flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2 mb-1">
+              <p class="text-sm font-semibold text-slate-800 leading-snug">${s.title}</p>
+              <span class="text-xs text-slate-400 shrink-0 mt-0.5">${durationStr}</span>
+            </div>
+            <p class="text-xs text-slate-500 leading-relaxed">${s.detail}</p>
+            <span class="inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full badge-${s.color}">
+              Step ${s.step} · ${s.color === 'blue' ? 'Data Access' :
+                                  s.color === 'violet' ? 'Analysis' :
+                                  s.color === 'emerald' ? 'Aggregation' :
+                                  s.color === 'amber' ? 'Database' :
+                                  s.color === 'teal' ? 'Output' : 'Process'}
+            </span>
+          </div>`;
+        ol.appendChild(li);
+      });
+
+      // Remove connector line from last item
+      const lastLine = ol.querySelector('li:last-child .w-0\\.5');
+      if (lastLine) lastLine.classList.add('hidden');
+    }
+
+    // Toggle expand/collapse
+    document.getElementById('obs-toggle').addEventListener('click', () => {
+      const body    = document.getElementById('obs-body');
+      const chevron = document.getElementById('obs-chevron');
+      const toggle  = document.getElementById('obs-toggle');
+      const open    = toggle.getAttribute('aria-expanded') === 'true';
+
+      toggle.setAttribute('aria-expanded', !open);
+      body.classList.toggle('hidden', open);
+      chevron.style.transform = open ? '' : 'rotate(180deg)';
+    });
+
+    // =========================================================================
+    // Excel viewer
+    // =========================================================================
+    async function loadExcel(url) {
+      const resp = await fetch(url);
+      const buf  = await resp.arrayBuffer();
+      _workbook  = XLSX.read(new Uint8Array(buf), { type: 'array' });
+
+      const tabsDiv = document.getElementById('sheet-tabs');
+      tabsDiv.innerHTML = '';
+
+      _workbook.SheetNames.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.type      = 'button';
+        btn.textContent = name;
+        btn.className = tabClass(i === 0);
+        btn.addEventListener('click', () => {
+          tabsDiv.querySelectorAll('button').forEach(b => b.className = tabClass(false));
+          btn.className = tabClass(true);
+          renderSheet(name);
+        });
+        tabsDiv.appendChild(btn);
+      });
+
+      renderSheet(_workbook.SheetNames[0]);
+      setHidden('excel-section', false);
+    }
+
+    function renderSheet(name) {
+      const ws = _workbook.Sheets[name];
+      let displayWs = ws;
+      if (name === 'Data') {
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (json.length > 501) displayWs = XLSX.utils.aoa_to_sheet(json.slice(0, 501));
+      }
+      document.getElementById('excel-table-wrap').innerHTML =
+        XLSX.utils.sheet_to_html(displayWs, { editable: false });
+    }
+
+    function tabClass(active) {
+      return 'px-4 py-1.5 rounded-lg text-sm font-medium transition ' +
+        (active ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200');
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+    function setHidden(id, hidden) {
+      document.getElementById(id).classList.toggle('hidden', hidden);
+    }
+  </script>
+</body>
+</html>
