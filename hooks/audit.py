@@ -40,10 +40,8 @@ _MAX_PREVIEW_CHARS = 300
 _MAX_INPUT_CHARS = 500
 
 
-def _get_log_path() -> Path:
-    """Return the active log path — either the overridden path or today's daily log."""
-    if _LOG_PATH is not None:
-        return _LOG_PATH
+def _daily_log_path() -> Path:
+    """Return today's rotating daily log path."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return Path(f"logs/audit_{today}.jsonl")
 
@@ -113,14 +111,17 @@ async def post_audit_hook(
 # ---------------------------------------------------------------------------
 
 def _write_record(record: dict) -> None:
-    """Append a single JSON record (one line) to the audit log."""
-    try:
-        log_path = _get_log_path()
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError as exc:
-        logger.error("audit.write_failed", extra={"error": str(exc), "path": str(log_path)})
+    """Append a single JSON record to the daily log and, if set, the per-run temp log."""
+    paths = [_daily_log_path()]
+    if _LOG_PATH is not None:
+        paths.append(_LOG_PATH)
+    for log_path in paths:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.error("audit.write_failed", extra={"error": str(exc), "path": str(log_path)})
 
 
 def _extract_preview(tool_response: object) -> str:
