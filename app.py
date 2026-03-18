@@ -118,6 +118,9 @@ async def analyse(
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        logger.exception("analyse.unexpected_error")
+        raise HTTPException(status_code=500, detail=str(exc))
 
     # Save Markdown report (our own copy of the agent's result text)
     stem = csv_path.stem if csv_path else "report"

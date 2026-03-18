@@ -247,7 +247,7 @@ async def run_agent(
                             logger.debug("agent.chunk", extra={"chars": len(block.text)})
 
                 elif isinstance(message, ResultMessage):
-                    result_text = message.result
+                    result_text = message.result or ""
                     logger.info(
                         "agent.result",
                         extra={
