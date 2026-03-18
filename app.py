@@ -12,8 +12,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -43,6 +43,12 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="CSV Analyst Agent", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("unhandled_error path=%s", request.url.path)
+    return JSONResponse(status_code=500, content={"detail": str(exc) or "Internal server error"})
 
 
 # ---------------------------------------------------------------------------

@@ -267,9 +267,14 @@
         if (dataPath) fd.append('data_path', dataPath);
 
         const res  = await fetch('/analyse', { method: 'POST', body: fd });
-        const data = await res.json();
 
-        if (!res.ok) throw new Error(data.detail || `Server error ${res.status}`);
+        if (!res.ok) {
+          let detail = `Server error ${res.status}`;
+          try { detail = (await res.json()).detail || detail; } catch { detail = await res.text() || detail; }
+          throw new Error(detail);
+        }
+
+        const data = await res.json();
 
         // Render markdown result
         document.getElementById('result-content').innerHTML = marked.parse(data.result);
