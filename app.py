@@ -8,6 +8,7 @@ import logging
 import re
 import subprocess
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -164,6 +165,14 @@ async def analyse(
             generated_files.append({"name": p.name, "url": f"/reports/{p.name}", "type": ftype})
         except ValueError:
             pass
+
+    # Fallback: scan reports/ for xlsx files written in the last 5 minutes that
+    # the audit log may have missed (e.g. when the temp log was incomplete).
+    cutoff = time.time() - 300
+    for p in sorted(REPORTS_DIR.glob("*.xls*")):
+        if p.name not in seen and p.stat().st_mtime >= cutoff:
+            seen.add(p.name)
+            generated_files.append({"name": p.name, "url": f"/reports/{p.name}", "type": "excel"})
 
     # Pick the first Excel the agent (or we) produced for the legacy excel_url field
     excel_url = next(

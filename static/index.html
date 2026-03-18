@@ -277,10 +277,12 @@
         const data = await res.json();
 
         // Render markdown result
-        document.getElementById('result-content').innerHTML = marked.parse(data.result);
+        document.getElementById('result-content').innerHTML = data.result
+          ? marked.parse(data.result)
+          : '<p class="text-slate-400 italic">No summary text returned — see generated files below.</p>';
         setHidden('results-section', false);
 
-        // Generated files panel
+        // Generated files panel — always show if we have any files
         if (data.generated_files?.length) {
           renderFiles(data.generated_files);
           setHidden('files-section', false);
