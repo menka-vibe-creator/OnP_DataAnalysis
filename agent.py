@@ -272,7 +272,7 @@ async def run_agent(
             extra={"session_id": session_id, "duration_s": f"{elapsed:.1f}"},
         )
 
-    if result_text is None:
+    if not result_text:
         raise RuntimeError("Agent finished without producing a result message.")
 
     return result_text

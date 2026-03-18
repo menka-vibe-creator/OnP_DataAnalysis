@@ -122,10 +122,15 @@ async def analyse(
         logger.exception("analyse.unexpected_error")
         raise HTTPException(status_code=500, detail=str(exc))
 
-    # Save Markdown report (our own copy of the agent's result text)
+    # Save Markdown report (our own copy of the agent's result text).
+    # If the SDK returns an empty result but the agent already wrote the file
+    # itself via the Write tool, read that instead — don't clobber it.
     stem = csv_path.stem if csv_path else "report"
     md_path = REPORTS_DIR / f"{stem}.md"
-    await asyncio.to_thread(md_path.write_text, result, "utf-8")
+    if result:
+        await asyncio.to_thread(md_path.write_text, result, "utf-8")
+    elif await asyncio.to_thread(md_path.exists):
+        result = await asyncio.to_thread(md_path.read_text, "utf-8")
 
     # Parse observability steps from the per-run audit log
     steps = await asyncio.to_thread(parse_audit_steps, audit_path)
